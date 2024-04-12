@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """
- @author: Xin Zhang
- @contact: 2250271011@email.szu.edu.cn
  @time: 2024/1/22 14:59
  @desc:
 """

@@ -7,6 +7,25 @@ from modules.root_solv import *
 from utils.visualization import visualize_featuremap
 
 
+def taylor_2nd(Z, X, signal, S, log=''):
+    dydx = torch.autograd.grad(Z, X, grad_outputs=torch.ones_like(Z), create_graph=True,
+                               retain_graph=True)  # ([],)
+    # 2ns gradient
+    if dydx[0].requires_grad:
+        # print(log, ', 2nd-Taylor Yes!')
+        # C = self.gradprop(dydx[0], self.X, S)
+        dy2dx = torch.autograd.grad(dydx[0], X, S, retain_graph=True)  # ([],)
+    else:
+        # C = dydx[0] * S
+        dy2dx = [0]
+    outputs = []
+
+    a1 = signal * (dydx[0] * S)
+    a2 = torch.pow(signal, exponent=2) * (dy2dx[0]) / 2
+    outputs = a1 + a2
+    return outputs
+
+
 def model_flattening(module_tree):
     module_list = []
     children_list = list(module_tree.children())
@@ -255,23 +274,30 @@ class DTDOpt(nn.Module):
         def f(w1, w2, x1, x2):
             _z1 = F.linear(x1, w1)
             _z2 = F.linear(x2, w2)
-            
             _R1 = R * torch.abs(_z1) / (torch.abs(_z1) + torch.abs(_z2))
             _R2 = R * torch.abs(_z2) / (torch.abs(_z1) + torch.abs(_z2))
+            S1 = safe_divide(_R1, _z1)
+            S2 = safe_divide(_R2, _z2)
+
             root1 = rel_sup_root_linear(x1, _R1, step=1, weight=w1)
             signal1 = x1 - root1
-            z1 = F.linear(signal1, w1)
-            C1 = piece_dtd_linear(x=signal1, w=w1, z=z1, under_R=z1, R=_R1, root_zero=root1, step=1)
 
-            root2 = rel_sup_root_linear(x2, _R2, step=50, weight=w2)
+            # z1 = F.linear(signal1, w1)
+            # R1 = piece_dtd_linear(x=signal1, w=w1, z=z1, under_R=z1, R=_R1, root_zero=root1, step=1)
+            R1 = signal1 * torch.autograd.grad(_z1, x1, S1)[0]
+            # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
+
+            root2 = rel_sup_root_linear(x2, _R2, step=20, weight=w2)
             signal2 = x2 - root2
-            z2 = F.linear(signal2, w2)
-            C2 = piece_dtd_linear(x=signal2, w=w2, z=z2, under_R=z2, R=_R2, root_zero=root2, step=50)
-            return C1 + C2
+            # z2 = F.linear(signal2, w2)
+            # R2 = piece_dtd_linear(x=signal2, w=w2, z=_z2, under_R=z2, R=_R2, root_zero=root2, step=50)
+            R2 = signal2 * torch.autograd.grad(_z2, x2, S2)[0]
+            # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
+            return R1 + R2
 
         activator_relevances = f(pw, nw, px, nx)
         inhibitor_relevances = f(nw, pw, px, nx)
-        R = 0.5 * activator_relevances + 0.1 * inhibitor_relevances
+        R = 0.5 * activator_relevances + 0. * inhibitor_relevances
         return R
 
     def backprop_conv(self, activation, module, R, layer_idx=9):
@@ -279,15 +305,22 @@ class DTDOpt(nn.Module):
         wp = torch.clamp(module.weight, min=0)
         wn = torch.clamp(module.weight, max=0)
 
-        root_p = rel_sup_root_cnn(activation, R, the_layer=[module.weight, stride, padding], step=50)
-        signal_p = activation - root_p
-        zp = F.conv2d(signal_p, wp, stride=stride, padding=padding)
-        zn = F.conv2d(signal_p, wn, stride=stride, padding=padding)
+        zp = F.conv2d(activation, wp, stride=stride, padding=padding)
+        zn = F.conv2d(activation, wn, stride=stride, padding=padding)
         _R1 = R * torch.abs(zp) / (torch.abs(zp) + torch.abs(zn))
         _R2 = R * torch.abs(zn) / (torch.abs(zp) + torch.abs(zn))
-        cp = piece_dtd_conv(signal_p, wp, stride, padding, z=zp, under_R=zp, R=_R1, root_zero=root_p, step=50)
-        cn = piece_dtd_conv(signal_p, wn, stride, padding, z=zn, under_R=zn, R=_R2, root_zero=root_p, step=50)
-        R = cp + cn
+
+        root = rel_sup_root_cnn(activation, _R1, the_layer=[wp, stride, padding], step=20)
+        signal = activation - root
+
+        Sp = safe_divide(_R1, zp)
+        Sn = safe_divide(_R2, zn)
+
+        Rp = signal * torch.autograd.grad(zp, activation, Sp)[0]
+        # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
+        Rn = signal * torch.autograd.grad(zn, activation, Sn)[0]
+
+        R = Rp + Rn
 
         # xp = torch.clamp(activation, min=0)
         # xn = torch.clamp(activation, max=0)
@@ -350,14 +383,23 @@ class DTDOpt(nn.Module):
         wn = torch.clamp(module.weight, max=0)
         x = torch.ones_like(x, dtype=x.dtype, requires_grad=True)
 
-        root = rel_sup_root_cnn(x, R, the_layer=[module.weight, stride, padding], step=50)
-        signal = x - root
-        zp = F.conv2d(signal, wp, stride=stride, padding=padding)
-        zn = F.conv2d(signal, wn, stride=stride, padding=padding)
+        zp = F.conv2d(x, wp, stride=stride, padding=padding)
+        zn = F.conv2d(x, wn, stride=stride, padding=padding)
         _R1 = R * torch.abs(zp) / (torch.abs(zp) + torch.abs(zn))
         _R2 = R * torch.abs(zn) / (torch.abs(zp) + torch.abs(zn))
-        Rp = piece_dtd_conv(signal, wp, stride, padding, z=zp, under_R=zp, R=_R1, root_zero=root, step=50)
-        Rn = piece_dtd_conv(signal, wn, stride, padding, z=zn, under_R=zn, R=_R2, root_zero=root, step=50)
+
+        root = rel_sup_root_cnn(x, _R1, the_layer=[wp, stride, padding], step=20)
+        signal = x - root
+
+        Sp = safe_divide(_R1, zp)
+        Sn = safe_divide(_R2, zn)
+
+        # Rp = piece_dtd_conv(signal, wp, stride, padding, z=zp, under_R=zp, R=_R1, root_zero=root, step=50)
+        # Rn = piece_dtd_conv(signal, wn, stride, padding, z=zn, under_R=zn, R=_R2, root_zero=root, step=50)
+        Rp = signal * torch.autograd.grad(zp, x, Sp)[0]
+        # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
+        Rn = signal * torch.autograd.grad(zn, x, Sn)[0]
+
         R = Rp + Rn
         # f(N) eval
         # self.root_map = root
@@ -370,6 +412,28 @@ class DTDOpt(nn.Module):
         return R
 
     def backprop_relu(self, activation, R):
+        xp = torch.clamp(activation, min=0)
+        xn = torch.clamp(activation, max=0)
+        _z1 = F.relu(xp)
+        _z2 = F.relu(xn)
+
+        root1 = rel_sup_root_act(xp, R, step=20, func=F.relu, z=_z1)
+        signal1 = activation - root1
+        # z1 = F.gelu(xp)
+        # R1 = piece_dtd_act(x=signal1, z=z1, under_R=z1, R=R, root_zero=root1, func=F.gelu, step=50)
+        S1 = safe_divide(R, _z1)
+        # R1 = signal1 * torch.autograd.grad(z1, xp, S1)[0]
+        R1 = taylor_2nd(Z=_z1, X=xp, signal=signal1, S=S1)
+
+        root2 = rel_sup_root_act(xn, R, step=20, func=F.relu, z=_z2)
+        signal2 = xn - root2
+        # z2 = F.gelu(xn)
+        # R2 = piece_dtd_act(x=signal2, z=z2, under_R=z2, R=R, root_zero=root2, func=F.gelu, step=50)
+        S2 = safe_divide(R, _z2)
+        # R2 = signal2 * torch.autograd.grad(z2, xn, S2)[0]
+        R2 = taylor_2nd(Z=_z2, X=xn, signal=signal2, S=S2)
+
+        R = R1 + R2
         return R
 
     def backprop_adap_avg_pool(self, activation, R):

@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """
- @author: Xin Zhang
- @contact: 2250271011@email.szu.edu.cn
  @time: 2024/1/11 21:12
  @desc:
 """
@@ -61,45 +59,45 @@ def taylor_2nd(Z, X, signal, S, log=''):
 
 class Linear(nn.Linear, Interpretation):
     def relprop(self, R, alpha):
-        root = rel_sup_root_linear(self.X, R, step=10, weight=self.weight)
-        signal = self.X - root
-        z = F.linear(signal, self.weight)
-        # R = piece_dtd_linear(x=signal, w=self.weight, z=z, under_R=z, R=R, root_zero=root)
-        S = safe_divide(R, z)
-        R = signal * torch.autograd.grad(z, signal, S)[0]
-        # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
+    #     root = rel_sup_root_linear(self.X, R, step=10, weight=self.weight)
+    #     signal = self.X - root
+    #     z = F.linear(self.X, self.weight)
+    #     # R = piece_dtd_linear(x=signal, w=self.weight, z=z, under_R=z, R=R, root_zero=root)
+    #     S = safe_divide(R, z)
+    #     R = signal * torch.autograd.grad(z, signal, S)[0]
+    #     # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
 
-        # pw = torch.clamp(self.weight, min=0)
-        # nw = torch.clamp(self.weight, max=0)
-        # px = torch.clamp(self.X, min=0)
-        # nx = torch.clamp(self.X, max=0)
-        #
-        # def f(w1, w2, x1, x2):
-        #     _z1 = F.linear(x1, w1)
-        #     _z2 = F.linear(x2, w2)
-        #     _R1 = R * torch.abs(_z1) / (torch.abs(_z1) + torch.abs(_z2))
-        #     _R2 = R * torch.abs(_z2) / (torch.abs(_z1) + torch.abs(_z2))
-        #
-        #     root1 = rel_sup_root_linear(x1, _R1, step=1, weight=w1)
-        #     signal1 = x1 - root1
-        #     z1 = F.linear(x1, w1)
-        #     # C1 = piece_dtd_linear(x=signal1, w=w1, z=z1, under_R=z1, R=R, root_zero=root1, step=1)
-        #     S1 = safe_divide(_R1, z1)
-        #     C1 = signal1 * torch.autograd.grad(z1, x1, S1)[0]
-        #     # C1 = taylor_2nd(Z=z1, X=x1, signal=signal1, S=S1)
-        #
-        #     root2 = rel_sup_root_linear(x2, _R2, step=50, weight=w2)
-        #     signal2 = x2 - root2
-        #     z2 = F.linear(x2, w2)
-        #     # C2 = piece_dtd_linear(x=signal2, w=w2, z=z2, under_R=z2, R=R, root_zero=root2, step=50)
-        #     S2 = safe_divide(_R2, z2)
-        #     C2 = signal2 * torch.autograd.grad(z2, x2, S2)[0]
-        #     # C2 = taylor_2nd(Z=z2, X=x2, signal=signal2, S=S2)
-        #     return C1 + C2
-        #
-        # activator_relevances = f(pw, nw, px, nx)
-        # inhibitor_relevances = f(nw, pw, px, nx)
-        # R = 0.5*activator_relevances + 0.*inhibitor_relevances
+        pw = torch.clamp(self.weight, min=0)
+        nw = torch.clamp(self.weight, max=0)
+        px = torch.clamp(self.X, min=0)
+        nx = torch.clamp(self.X, max=0)
+
+        def f(w1, w2, x1, x2):
+            _z1 = F.linear(x1, w1)
+            _z2 = F.linear(x2, w2)
+            _R1 = R * torch.abs(_z1) / (torch.abs(_z1) + torch.abs(_z2))
+            _R2 = R * torch.abs(_z2) / (torch.abs(_z1) + torch.abs(_z2))
+
+            root1 = rel_sup_root_linear(x1, _R1, step=1, weight=w1)
+            signal1 = x1 - root1
+            # z1 = F.linear(x1, w1)
+            # C1 = piece_dtd_linear(x=signal1, w=w1, z=z1, under_R=z1, R=R, root_zero=root1, step=1)
+            S1 = safe_divide(_R1, _z1)
+            C1 = signal1 * torch.autograd.grad(_z1, x1, S1)[0]
+            # C1 = taylor_2nd(Z=z1, X=x1, signal=signal1, S=S1)
+
+            root2 = rel_sup_root_linear(x2, _R2, step=50, weight=w2)
+            signal2 = x2 - root2
+            # z2 = F.linear(x2, w2)
+            # C2 = piece_dtd_linear(x=signal2, w=w2, z=z2, under_R=z2, R=R, root_zero=root2, step=50)
+            S2 = safe_divide(_R2, _z2)
+            C2 = signal2 * torch.autograd.grad(_z2, x2, S2)[0]
+            # C2 = taylor_2nd(Z=z2, X=x2, signal=signal2, S=S2)
+            return C1 + C2
+
+        activator_relevances = f(pw, nw, px, nx)
+        inhibitor_relevances = f(nw, pw, px, nx)
+        R = 0.5*activator_relevances + 0.*inhibitor_relevances
         return R
 
 
@@ -108,40 +106,39 @@ class GELU(nn.GELU, Interpretation):
         super(GELU, self).__init__()
         self.layer_idx = layer_idx
 
-    def relprop(self, R, alpha):
-        _z1 = F.gelu(self.X)
-        root = rel_sup_root_act(self.X, R, step=20, func=F.softmax,  z=_z1)
-        # root = torch.zeros_like(self.X)
-        signal = self.X - root
-        z = F.gelu(signal)
-        # R = piece_dtd_act(x=signal, z=z, under_R=z, R=R, root_zero=root, func=F.gelu, step=20)
-        S = safe_divide(R, z)
-        # R = signal * torch.autograd.grad(z, signal, S)[0]
-        R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)
-
     # def relprop(self, R, alpha):
-    #     xp = torch.clamp(self.X, min=0)
-    #     xn = torch.clamp(self.X, max=0)
-    #     _z1 = F.gelu(xp)
-    #     _z2 = F.gelu(xn)
-    #
-    #     root1 = rel_sup_root_act(xp, R, step=50, func=F.gelu, z=_z1)
-    #     signal1 = self.X - root1
-    #     z1 = F.gelu(xp)
-    #     # R1 = piece_dtd_act(x=signal1, z=z1, under_R=z1, R=R, root_zero=root1, func=F.gelu, step=50)
-    #     S1 = safe_divide(R, z1)
-    #     # R1 = signal1 * torch.autograd.grad(z1, xp, S1)[0]
-    #     R1 = taylor_2nd(Z=z1, X=xp, signal=signal1, S=S1)
-    #
-    #     root2 = rel_sup_root_act(xn, R, step=50, func=F.gelu, z=_z2)
-    #     signal2 = xn - root2
-    #     z2 = F.gelu(xn)
-    #     # R2 = piece_dtd_act(x=signal2, z=z2, under_R=z2, R=R, root_zero=root2, func=F.gelu, step=50)
-    #     S2 = safe_divide(R, z2)
-    #     # R2 = signal2 * torch.autograd.grad(z2, xn, S2)[0]
-    #     R2 = taylor_2nd(Z=z2, X=xn, signal=signal2, S=S2)
-    #
-    #     R = 0.5*R1 + 0.*R2
+    #     z = F.gelu(self.X)
+    #     root = rel_sup_root_act(self.X, R, step=20, func=F.softmax,  z=z)
+    #     # root = torch.zeros_like(self.X)
+    #     signal = self.X - root
+    #     # R = piece_dtd_act(x=signal, z=z, under_R=z, R=R, root_zero=root, func=F.gelu, step=20)
+    #     S = safe_divide(R, z)
+    #     # R = signal * torch.autograd.grad(z, signal, S)[0]
+    #     R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)
+
+    def relprop(self, R, alpha):
+        xp = torch.clamp(self.X, min=0)
+        xn = torch.clamp(self.X, max=0)
+        _z1 = F.gelu(xp)
+        _z2 = F.gelu(xn)
+
+        root1 = rel_sup_root_act(xp, R, step=50, func=F.gelu, z=_z1)
+        signal1 = self.X - root1
+        # z1 = F.gelu(xp)
+        # R1 = piece_dtd_act(x=signal1, z=z1, under_R=z1, R=R, root_zero=root1, func=F.gelu, step=50)
+        S1 = safe_divide(R, _z1)
+        # R1 = signal1 * torch.autograd.grad(z1, xp, S1)[0]
+        R1 = taylor_2nd(Z=_z1, X=xp, signal=signal1, S=S1)
+
+        root2 = rel_sup_root_act(xn, R, step=50, func=F.gelu, z=_z2)
+        signal2 = xn - root2
+        # z2 = F.gelu(xn)
+        # R2 = piece_dtd_act(x=signal2, z=z2, under_R=z2, R=R, root_zero=root2, func=F.gelu, step=50)
+        S2 = safe_divide(R, _z2)
+        # R2 = signal2 * torch.autograd.grad(z2, xn, S2)[0]
+        R2 = taylor_2nd(Z=_z2, X=xn, signal=signal2, S=S2)
+
+        R = 0.5*R1 + 0.*R2
 
         # ablation
         if self.layer_idx == 0:

@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """
- @author: Xin Zhang
- @contact: 2250271011@email.szu.edu.cn
  @time: 2024/3/24 23:50
  @desc: Forked from https://github.com/shirgur/AGFVisualization/blob/master/modules/layers.py
 """
