@@ -28,7 +28,9 @@ normal_func = transforms.Compose([
 ])
 
 mask_trans = transforms.Compose([
-        transforms.Resize((224, 224), Image.NEAREST),
+    # transforms.Resize((224, 224), Image.NEAREST),
+    transforms.Resize(224, Image.NEAREST),
+    transforms.CenterCrop(224)
 ])
 
 
@@ -51,8 +53,7 @@ def file_scanf2(path, contains, endswith, is_random=False, sub_ratio=1.0):
 class ImagenetDataset(data.Dataset):
     def __init__(self, img_transfer=True):
         super(ImagenetDataset, self).__init__()
-        # data_path = '/path/to/Datasets/ImageNet/train'
-        data_path = '/data1/zhangxin/Datasets/ImageNet/train'
+        data_path = '/path/to/Datasets/ImageNet/train'
         self.file_names = []
         self.file_names = []
         for root, dirs, files in os.walk(data_path):
@@ -96,7 +97,7 @@ class ImagenetDataset(data.Dataset):
 class ImagenetSegDataset(data.Dataset):
     def __init__(self, transform=None, target_transform=None):
         super(ImagenetSegDataset, self).__init__()
-        data_path = '/data1/zhangxin/Datasets/ImageNetS/ImageNetS50'
+        data_path = '/ImageNetS/ImageNetS50'
         img_path = data_path + '/'+'train-semi'
 
         self.img_names = []

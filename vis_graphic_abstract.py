@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 import torch
 import glob
 import platform
-from CNNs.resnet import resnet18
+from models.resnet import resnet18
 from data.__init__ import name_dict, idx_dict
 import random
 import os
+import time
 from torchvision import transforms
-from CNNs.baselines import dtd_z_plus as sa_base
-from CNNs import dtd_opt as sa_opt
+from modules.baselines import dtd_z_plus as sa_base
+from modules import layers_cnn as sa_opt
 from utils.visualization import visualize_cam
 
 print(torch.__version__, torch.version.cuda)
@@ -64,9 +65,10 @@ def file_scanf2(path, contains, endswith, is_random=False, sub_ratio=1.0):
 
 if __name__ == "__main__":
     data_path = 'data/samples'
+    # data_path = '/Datasets/ImageNet/train'
     file_names = []
     # for root, dirs, files in os.walk(data_path):
-    #     for sub_dir in files:
+    #     for sub_dir in dirs:
     #         imgs = file_scanf2(path=data_path + '/' + sub_dir,
     #                            contains=[
     #                                'n',
@@ -115,9 +117,14 @@ if __name__ == "__main__":
         #     title = 'Y'
         # else:
         #     title = 'N'
-
+        dtd_start = time.time()
         saliency_map1 = DTD(module_stack1, output1, 1000, 'resnet', index=None)
+        dtd_end = time.time()
+        our_dtd_start = time.time()
         saliency_map2 = OptDTD(module_stack2, output2, 1000, 'resnet', index=None)
+        our_dtd_end = time.time()
+        print("耗时: {:.2f}秒".format(dtd_end - dtd_start))
+        print("耗时: {:.2f}秒".format(our_dtd_end - our_dtd_start))
 
         vis1 = visualize_cam(saliency_map1, mean_cropping=True)
         vis2 = visualize_cam(saliency_map2, mean_cropping=True)
@@ -133,7 +140,8 @@ if __name__ == "__main__":
         axs[2].axis('off')
         # axs[2].set_title('Ours')
         save_name = f.split('/')[-1].replace('.JPEG', '_')
-        plt.savefig('data/output'
-                    '/' + save_name + ".jpg", dpi=500)
+        plt.savefig(
+            'data/output'
+            '/' + save_name + ".jpg", dpi=500)
         plt.clf()
         # plt.close('all')

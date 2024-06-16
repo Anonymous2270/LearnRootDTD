@@ -152,7 +152,7 @@ class DTDOpt(nn.Module):
             R = torch.eye(class_num)[index].to(y.device)
         R = torch.abs(R*y)
         # R = torch.abs(R)
-        r_layer = None
+        # r_layer = None
         for i in range(len(module_stack)):
             module = module_stack.pop()
             if len(module_stack) == 0:
@@ -269,7 +269,6 @@ class DTDOpt(nn.Module):
         nw = torch.clamp(module.weight, max=0)
         px = torch.clamp(activation, min=0)
         nx = torch.clamp(activation, max=0)
-        # print(nx.sum(dim=-1), 'qqqqq')
 
         def f(w1, w2, x1, x2):
             _z1 = F.linear(x1, w1)
@@ -279,7 +278,7 @@ class DTDOpt(nn.Module):
             S1 = safe_divide(_R1, _z1)
             S2 = safe_divide(_R2, _z2)
 
-            root1 = rel_sup_root_linear(x1, _R1, step=1, weight=w1)
+            root1 = rel_sup_root_linear(x1, _R1, step=1, weight=w1, z=_z1)
             signal1 = x1 - root1
 
             # z1 = F.linear(signal1, w1)
@@ -287,7 +286,7 @@ class DTDOpt(nn.Module):
             R1 = signal1 * torch.autograd.grad(_z1, x1, S1)[0]
             # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
 
-            root2 = rel_sup_root_linear(x2, _R2, step=20, weight=w2)
+            root2 = rel_sup_root_linear(x2, _R2, step=5, weight=w2, z=_z2)
             signal2 = x2 - root2
             # z2 = F.linear(signal2, w2)
             # R2 = piece_dtd_linear(x=signal2, w=w2, z=_z2, under_R=z2, R=_R2, root_zero=root2, step=50)
@@ -296,31 +295,31 @@ class DTDOpt(nn.Module):
             return R1 + R2
 
         activator_relevances = f(pw, nw, px, nx)
-        inhibitor_relevances = f(nw, pw, px, nx)
-        R = 0.5 * activator_relevances + 0. * inhibitor_relevances
+        # inhibitor_relevances = f(nw, pw, px, nx)
+        R = activator_relevances
         return R
 
     def backprop_conv(self, activation, module, R, layer_idx=9):
         stride, padding, kernel = module.stride, module.padding, module.kernel_size
         wp = torch.clamp(module.weight, min=0)
-        wn = torch.clamp(module.weight, max=0)
+        # wn = torch.clamp(module.weight, max=0)
 
         zp = F.conv2d(activation, wp, stride=stride, padding=padding)
-        zn = F.conv2d(activation, wn, stride=stride, padding=padding)
-        _R1 = R * torch.abs(zp) / (torch.abs(zp) + torch.abs(zn))
-        _R2 = R * torch.abs(zn) / (torch.abs(zp) + torch.abs(zn))
+        # zn = F.conv2d(activation, wn, stride=stride, padding=padding)
+        # _R1 = R * torch.abs(zp) / (torch.abs(zp) + torch.abs(zn))
+        # _R2 = R * torch.abs(zn) / (torch.abs(zp) + torch.abs(zn))
 
-        root = rel_sup_root_cnn(activation, _R1, the_layer=[wp, stride, padding], step=20)
+        root = rel_sup_root_cnn(activation, R, the_layer=[wp, stride, padding], step=5, z=zp)
         signal = activation - root
 
-        Sp = safe_divide(_R1, zp)
-        Sn = safe_divide(_R2, zn)
+        # Sp = safe_divide(_R1, zp)
+        # Sn = safe_divide(_R2, zn)
 
-        Rp = signal * torch.autograd.grad(zp, activation, Sp)[0]
+        Rp = signal * torch.autograd.grad(zp, activation, R)[0]
         # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
-        Rn = signal * torch.autograd.grad(zn, activation, Sn)[0]
+        # Rn = signal * torch.autograd.grad(zn, activation, Sn)[0]
 
-        R = Rp + Rn
+        R = Rp
 
         # xp = torch.clamp(activation, min=0)
         # xn = torch.clamp(activation, max=0)
@@ -380,27 +379,27 @@ class DTDOpt(nn.Module):
     def backprop_conv_input(self, x, module, R):
         stride, padding, kernel = module.stride, module.padding, module.kernel_size
         wp = torch.clamp(module.weight, min=0)
-        wn = torch.clamp(module.weight, max=0)
+        # wn = torch.clamp(module.weight, max=0)
         x = torch.ones_like(x, dtype=x.dtype, requires_grad=True)
 
         zp = F.conv2d(x, wp, stride=stride, padding=padding)
-        zn = F.conv2d(x, wn, stride=stride, padding=padding)
-        _R1 = R * torch.abs(zp) / (torch.abs(zp) + torch.abs(zn))
-        _R2 = R * torch.abs(zn) / (torch.abs(zp) + torch.abs(zn))
+        # zn = F.conv2d(x, wn, stride=stride, padding=padding)
+        # _R1 = R * torch.abs(zp) / (torch.abs(zp) + torch.abs(zn))
+        # _R2 = R * torch.abs(zn) / (torch.abs(zp) + torch.abs(zn))
 
-        root = rel_sup_root_cnn(x, _R1, the_layer=[wp, stride, padding], step=20)
+        root = rel_sup_root_cnn(x, R, the_layer=[wp, stride, padding], step=5, z=zp)
         signal = x - root
 
-        Sp = safe_divide(_R1, zp)
-        Sn = safe_divide(_R2, zn)
+        # Sp = safe_divide(_R1, zp)
+        # Sn = safe_divide(_R2, zn)
 
         # Rp = piece_dtd_conv(signal, wp, stride, padding, z=zp, under_R=zp, R=_R1, root_zero=root, step=50)
         # Rn = piece_dtd_conv(signal, wn, stride, padding, z=zn, under_R=zn, R=_R2, root_zero=root, step=50)
-        Rp = signal * torch.autograd.grad(zp, x, Sp)[0]
+        Rp = signal * torch.autograd.grad(zp, x, R)[0]
         # R = taylor_2nd(Z=z, X=self.X, signal=signal, S=S)  # unnecessary for linear
-        Rn = signal * torch.autograd.grad(zn, x, Sn)[0]
+        # Rn = signal * torch.autograd.grad(zn, x, Sn)[0]
 
-        R = Rp + Rn
+        R = Rp
         # f(N) eval
         # self.root_map = root
         return R

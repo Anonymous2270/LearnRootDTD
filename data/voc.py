@@ -60,7 +60,9 @@ test_img_trans = transforms.Compose([
     normalize,
 ])
 test_lbl_trans = transforms.Compose([
-    transforms.Resize((224, 224), Image.NEAREST)
+    # transforms.Resize((224, 224), Image.NEAREST)
+    transforms.Resize(224),
+    transforms.CenterCrop(224)
 ])
 
 
