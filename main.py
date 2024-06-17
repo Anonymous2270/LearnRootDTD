@@ -140,7 +140,7 @@ if __name__ == "__main__":
         # axs[2].set_title(CLS2IDX[class_indices[1]])
 
         save_name = f.split('/')[-1].replace('.JPEG', '_')
-        plt.savefig('/data1/zhangxin/Datasets/ImageNet/test_vit'
+        plt.savefig('/Datasets/ImageNet/test_vit'
                     '/' + save_name + ".jpg")
         plt.clf()
         # plt.close('all')
